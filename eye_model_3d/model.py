@@ -1,4 +1,6 @@
 import numpy as np
+from .geometry import mollweide_projection, rotation_3d
+import typing
 
 
 class EyeModel:
@@ -69,14 +71,10 @@ class EyeModel:
         u = self.xyz_l - self.xyz_c
         u = u / np.linalg.norm(u, axis=-1, keepdims=True)
         if self.convergence != 0:
-            zRot = np.array([[np.cos(self._eye_angle), np.sin(self._eye_angle), 0],
-                             [-np.sin(self._eye_angle), np.cos(self._eye_angle), 0],
-                             [0, 0, 1]])
+            zRot = rotation_3d(self._eye_angle, axis=2)
             u = np.einsum("ij,nj->ni", zRot, u)
         if self.dorsal_convergence != 0:
-            xRot = np.array([[1, 0, 0],
-                             [0, np.cos(self._dorsal_eye_angle), -np.sin(self._dorsal_eye_angle)],
-                             [0, np.sin(self._dorsal_eye_angle), np.cos(self._dorsal_eye_angle)]])
+            xRot = rotation_3d(self._eye_angle, axis=0)
             u = np.einsum("ij,nj->ni", xRot, u)
         return u
 
@@ -102,27 +100,29 @@ class EyeModel:
     def convergence(self) -> float:
         """Inward vergence angle of the ommatidia sight lines (in radians)."""
         if self.is_right:
-            return -self._eye_angle
-        return self._eye_angle
+            return self._eye_angle
+        return -self._eye_angle
 
     @convergence.setter
     def convergence(self, value):
         if self.is_right:
-            value = -value
-        self._eye_angle = value
+            self._eye_angle = value
+        else:
+            self._eye_angle = -value
 
     @property
     def dorsal_convergence(self) -> float:
         """Upward vergence angle of the ommatidia sight lines (in radians)."""
         if self.is_right:
-            return -self._dorsal_eye_angle
-        return self._dorsal_eye_angle
+            return self._dorsal_eye_angle
+        return -self._dorsal_eye_angle
 
     @dorsal_convergence.setter
     def dorsal_convergence(self, value):
         if self.is_right:
-            value = -value
-        self._dorsal_eye_angle = value
+            self._dorsal_eye_angle = value
+        else:
+            self._dorsal_eye_angle = -value
 
     def project_onto_sightlines(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Find the shortest distance between a set of points and ommatidia sight lines.
@@ -141,21 +141,21 @@ class EyeModel:
         points = np.atleast_2d(points)
         u = self.xyz_u
         outer = np.einsum("ni,nj->nij", u, u, optimize="greedy")
-        v = points[:, None] - self.xyz_l[None]
+        v = points[..., None, :] - self.xyz_l
         q = np.einsum("nij,...nj->...ni", self.I - outer, v, optimize="greedy")
         d = np.einsum("ni,...ni->...n", u, v, optimize="greedy")
         s = np.linalg.norm(q, axis=-1)
         return d, s
 
-    def column_activation(self, points: np.ndarray, radii: np.ndarray, newaxis=True) -> np.ndarray:
+    def column_activation(self, points: np.ndarray, radius: typing.Union[float, np.ndarray], newaxis=True) -> np.ndarray:
         """Compute the activation of each column for stimuli centered on points with the given radii.
 
         Parameters
         ----------
-        points: (N, 3) ndarray of floats
+        points: (..., N, 3) ndarray of floats
             Centroids (xyz coordinates) of spherical stimuli.
-        radii: (N,) or (M,) np.ndarray of floats
-            Radii of spherical stimuli.
+        radius: float or (N,) or (M,) np.ndarray of floats
+            Radius or radii of spherical stimuli.
         newaxis: bool, optional
             If True (default), compute the column activation for all pairwise combination of points and radii. If False,
             M must equal N and radii represent the radius of each stimulus in points.
@@ -168,17 +168,19 @@ class EyeModel:
         # Compute projection of points onto sight lines
         d, s = self.project_onto_sightlines(points)
         # Manage axes
+        radii = np.atleast_1d(radius)
         radii = radii[:, None]
         if newaxis:
-            radii = radii[..., None]
+            # radii = radii[..., None]
+            s = s[..., None, :]
+            d = d[..., None, :]
         else:
-            assert len(radii) == len(points)
+            assert len(radii) in (1, points.shape[-2]), "radius does match, try setting newaxis=True"
         # Compute angle of intersection
         sin = np.clip(s / radii, 0, 1)
         a = np.sqrt(1 - np.square(sin))
         # Remove activations behind retina
-        i, j = np.where(d < 0)
-        a[..., i, j] = 0
+        a[np.where(d < 0)] = 0
         return a
 
     @property
@@ -208,20 +210,3 @@ class EyeModel:
         if flip:  # projection from inside sphere
             return xy_mol * (-1, 1)
         return xy_mol
-
-
-def mollweide_projection(x3d, y3d, z3d, tol=1e-8, niter=1000):
-    """Computes the mollweide projection of points lying on a unit sphere using Newton-Raphson iteration.
-    See: https://en.wikipedia.org/wiki/Mollweide_projection
-    """
-    lon = np.atan2(y3d, x3d)
-    lat = np.atan2(z3d, np.linalg.norm([x3d, y3d], axis=0))
-    theta = np.array(lat)
-    for i in range(niter):
-        dtheta = (2 * theta + np.sin(2 * theta) - np.pi * np.sin(lat)) / (2 + 2 * np.cos(2 * theta))
-        if np.abs(dtheta).max() < tol:
-            break
-        theta = theta - dtheta
-    x_mollweide = 2 * np.sqrt(2) * lon * np.cos(theta) / np.pi
-    y_mollweide = np.sqrt(2) * np.sin(theta)
-    return np.stack([x_mollweide, y_mollweide], axis=-1)

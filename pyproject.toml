@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eye_model_3d"
+version = "0.1.0"
+description = "3D model of the fly visual system"
+readme = "readme.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scikit-learn",
+    "pandas",
+]
+
+[tool.setuptools.packages.find]
+where = ["eye_model_3d"]
