@@ -1,7 +1,8 @@
-Library for presenting simple stimuli to a 3D model of the _Drosophila_ visual system used to compute  column 
-activations in Mearns et al,, 2026 [1].
+Library for presenting simple stimuli to a 3D model of the _Drosophila_ visual system. Used to compute visual column 
+activations in modeling results of Mearns et al., 2026 [1].
 
-Original data are from Zhao et al., 2025 [2]. Mearns et al. remapped visual columns from FlyWire.
+Original data are from Zhao et al., 2025 [2]. Mearns et al. remapped visual columns from FlyWire using method similar
+to Zhao et al.
 
 # About
 
